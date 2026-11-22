@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "knowledge-base": {
+      "command": "arch",
+      "args": ["-arm64", ".venv/bin/python", "mcp-servers/knowledge-base/server.py"]
+    }
+  }
+}
