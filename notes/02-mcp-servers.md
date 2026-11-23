@@ -1,3 +1,9 @@
+---
+topic: mcp
+tags: [mcp, stdio, tools]
+source: Claude Code in Action course
+date: 2026-10-10
+---
 # MCP servers
 
 > Starter note. Replace with your own words from the course.

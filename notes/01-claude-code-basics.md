@@ -1,3 +1,9 @@
+---
+topic: claude-code
+tags: [claude-code, claude-md, context]
+source: Claude Code in Action course
+date: 2026-10-10
+---
 # Claude Code basics
 
 > Starter note. Replace with your own words from the course.

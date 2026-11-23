@@ -1,20 +1,12 @@
-"""Pure note-search logic. No MCP imports, so it is easy to test and to swap out.
+"""Note logic. No MCP imports, so it is easy to test and to swap out.
 
-Later courses (RAG / embeddings): replace the body of `search_notes` with vector
-search. Keep the signature and return shape and nothing else needs to change.
+Search is backed by the SQLite FTS5 chunk index in `index.py` (BM25 ranking, metadata filters,
+incremental sync). `search_notes` here collapses chunk hits to one hit per note, which is the shape
+the evals use. Later courses (RAG / embeddings): swap the retrieval inside `index.search`.
 """
-import re
 from pathlib import Path
 
-STOPWORDS = {
-    "a", "an", "the", "and", "or", "of", "to", "in", "on", "for", "with", "is",
-    "are", "was", "were", "do", "does", "did", "how", "what", "why", "when",
-    "i", "my", "me", "it", "this", "that", "about", "can", "use", "using", "learn", "learned",
-}
-
-
-def _tokens(text: str) -> list[str]:
-    return [t for t in re.findall(r"[a-z0-9_]+", text.lower()) if len(t) > 1 and t not in STOPWORDS]
+import index
 
 
 def _note_files(notes_dir: Path) -> list[Path]:
@@ -51,29 +43,23 @@ def get_note(notes_dir: Path, name: str) -> str | None:
     return None
 
 
-def search_notes(notes_dir: Path, query: str, max_results: int = 5) -> list[dict]:
-    """Keyword search. Score = body hits + 3x title hits."""
-    tokens = _tokens(query)
-    if not tokens:
-        return []
-    results = []
-    for p in _note_files(notes_dir):
-        try:
-            text = p.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        lower, title = text.lower(), _title(p).lower()
-        score = 0
-        for t in tokens:
-            pattern = rf"\b{re.escape(t)}\b"
-            score += len(re.findall(pattern, lower)) + 3 * len(re.findall(pattern, title))
-        if score == 0:
-            continue
-        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-        body = [ln for ln in lines if not ln.startswith("#")]  # prefer content over headings
-        snippet = next(
-            (ln[:200] for ln in body + lines if any(t in ln.lower() for t in tokens)), ""
-        )
-        results.append({"name": _name(notes_dir, p), "title": _title(p), "score": score, "snippet": snippet})
-    results.sort(key=lambda r: r["score"], reverse=True)
-    return results[:max_results]
+def search_notes(notes_dir: Path, query: str, max_results: int = 5, **filters) -> list[dict]:
+    """BM25 search over chunks, collapsed to the best chunk per note.
+
+    `filters` are passed to index.search (topic, source, tags, date_from, date_to).
+    Builds the index on first use; call index.sync() to pick up edits (the evals, server and watcher do).
+    """
+    conn = index.connect(index.default_db_path(notes_dir))
+    try:
+        if conn.execute("SELECT 1 FROM files LIMIT 1").fetchone() is None:
+            index.sync(conn, notes_dir)
+        hits = index.search(conn, query, limit=max(max_results * 5, 20), **filters)
+    finally:
+        conn.close()
+    best: dict[str, dict] = {}
+    for h in hits:  # already sorted best-first
+        best.setdefault(h["name"], h)
+    return [
+        {"name": h["name"], "title": h["title"], "score": h["score"], "snippet": h["snippet"]}
+        for h in list(best.values())[:max_results]
+    ]
