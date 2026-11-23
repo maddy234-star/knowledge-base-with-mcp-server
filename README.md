@@ -1,5 +1,7 @@
 # AI Learning Lab
 
+Built a knowledge base with MCP server to gain an understanding of framework, evals, agents etc.
+
 A personal knowledge-base MCP server for Claude Code, built as a project for the "Claude Code in Action"
 course and designed to grow with later courses.
 
